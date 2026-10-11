@@ -18,7 +18,7 @@ function FloatLabel({ name, price: p, className, delay = 0 }: { name: string; pr
       <motion.div
         animate={reduced ? undefined : { y: [0, -6, 0] }}
         transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay }}
-        className="flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-[11px] font-medium shadow-[0_8px_20px_-10px_rgba(58,52,44,0.4)]"
+        className="flex items-center gap-2 whitespace-nowrap rounded-full border border-line bg-paper px-3 py-1.5 text-[11px] font-medium shadow-[0_8px_20px_-10px_rgba(58,52,44,0.4)]"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-sage" />
         {name}
@@ -30,7 +30,7 @@ function FloatLabel({ name, price: p, className, delay = 0 }: { name: string; pr
 
 export function Hero() {
   const reduced = useReducedMotion();
-  const planUri = planDataUri(HERO_PLAN, { x: 160, w: 160, y: 58, label: "160 cm" });
+  const planUri = planDataUri(HERO_PLAN, { from: { x: 160, y: 158 }, to: { x: 320, y: 158 }, label: "160 cm" });
   const weekly = weeklyRateFor(HERO_PLAN);
 
   return (
@@ -78,14 +78,14 @@ export function Hero() {
           initial={reduced ? undefined : { opacity: 0, y: 32 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-          className="relative"
+          className="relative mx-auto w-full max-w-[560px]"
         >
           <div className="rounded-2xl border border-line bg-paper p-3 shadow-[0_28px_60px_-30px_rgba(58,52,44,0.45)] transition-transform duration-500 hover:-rotate-[0.6deg]">
-            <img src={planUri} alt="Top-down floor plan of a rented workspace" className="w-full rounded-xl" />
+            <img src={planUri} alt="Isometric floor plan of a rented workspace" className="w-full rounded-xl" />
           </div>
-          <FloatLabel name="Panorama Ultrawide" price={price("monitor-ultra")} className="right-[4%] top-[16%]" delay={0.1} />
-          <FloatLabel name="Citra Mesh Chair" price={price("chair-mesh")} className="left-[2%] top-[56%]" delay={0.6} />
-          <FloatLabel name="Monsoon Desk Plant" price={price("plant-monsoon")} className="right-[2%] bottom-[20%]" delay={1.1} />
+          <FloatLabel name="Panorama Ultrawide" price={price("monitor-ultra")} className="right-[2%] top-[7%]" delay={0.1} />
+          <FloatLabel name="Citra Mesh Chair" price={price("chair-mesh")} className="left-[0%] top-[68%]" delay={0.6} />
+          <FloatLabel name="Monsoon Desk Plant" price={price("plant-monsoon")} className="right-[-1%] top-[52%]" delay={1.1} />
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

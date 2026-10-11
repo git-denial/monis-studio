@@ -29,7 +29,7 @@ export function PresetGrid({ onSelect }: { onSelect: (id: string) => void }) {
               isActive && "border-sage ring-2 ring-sage/30",
             )}
           >
-            <div className={cn("relative aspect-[480/340] overflow-hidden border-b", isScratch ? "border-dashed border-line" : "border-line")}>
+            <div className={cn("relative aspect-[860/720] overflow-hidden border-b", isScratch ? "border-dashed border-line" : "border-line")}>
               <img src={uri} alt={`${ps.name} floor plan`} className={cn("h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]", isScratch && "opacity-40")} />
               {isScratch && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center">

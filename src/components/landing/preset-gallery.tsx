@@ -45,7 +45,7 @@ export function PresetGallery() {
                     isScratch ? "border-dashed border-line" : "border-line bg-paper",
                   )}
                 >
-                  <div className="relative aspect-[480/340] overflow-hidden border-b border-line">
+                  <div className="relative aspect-[860/720] overflow-hidden border-b border-line">
                     <img
                       src={uri}
                       alt={`${ps.name} floor plan`}

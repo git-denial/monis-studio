@@ -7,7 +7,7 @@ export interface Product {
   descriptor: string;
   description: string;
   weeklyRate: number; // IDR per week — demo estimate
-  size: { w: number; h: number }; // footprint in cm (drives canvas scale)
+  size: { w: number; d: number; h: number }; // footprint (cm) + height
   defaultPos: { x: number; y: number; rotation: number };
 }
 

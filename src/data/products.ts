@@ -1,4 +1,4 @@
-import { getArt } from "@/lib/art";
+import { getSpec } from "@/lib/art";
 import type { CategoryId, DurationOption, Product } from "@/types/workspace";
 
 export const CATEGORIES: { id: CategoryId; label: string }[] = [
@@ -18,7 +18,10 @@ export const DURATION_OPTIONS: DurationOption[] = [
   { id: "3m", label: "3 months", short: "3 mos", weeks: 12, multiplier: 0.75, note: "25% off — best value" },
 ];
 
-const dims = (id: string) => { const a = getArt(id); return { w: a.w, h: a.h }; };
+const dims = (id: string) => {
+  const s = getSpec(id);
+  return { w: s.w, d: s.d, h: s.h };
+};
 
 export const PRODUCTS: Product[] = [
   { id: "desk-wood", name: "Ara Wood Desk", category: "desks", descriptor: "Solid rubberwood · 140 × 70 cm",

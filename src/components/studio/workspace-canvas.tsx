@@ -1,19 +1,55 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Group, Image as KonvaImage, Ellipse, Line, Transformer } from "react-konva";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Stage, Layer, Group, Image as KonvaImage, Line, Transformer } from "react-konva";
 import type Konva from "konva";
 import { AnimatePresence, motion } from "motion/react";
 import { Armchair, Copy, MousePointerClick, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PRODUCTS } from "@/data/products";
 import { useWorkspace } from "@/store/workspace-store";
-import { artDataUri, getArt, roomDataUri, ROOM_H, ROOM_W } from "@/lib/art";
+import type { WorkspaceItem } from "@/types/workspace";
+import {
+  ROOM_H, ROOM_W, SCENE_H, SCENE_OX, SCENE_OY, SCENE_W,
+  footprintOf, norm90, project, resolveScene, roomDataUri, spriteDataUri, spriteMeta, supportZ,
+} from "@/lib/art";
 import { findProduct } from "@/lib/pricing";
 import { CanvasToolbar } from "./canvas-toolbar";
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const round5 = (v: number) => Math.round(v / 5) * 5;
+const ROTS = [0, 90, 180, 270];
+const SNAP = 8;
+
+// Ease-out-back scale pulse: entrance pop (new items) and turn pulse (rotation).
+function animateScale(node: Konva.Node, from: number, dur: number, delay = 0) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  const t0 = performance.now() + delay;
+  node.scaleX(from);
+  node.scaleY(from);
+  const tick = (t: number) => {
+    if (t < t0) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    const k = Math.min(1, (t - t0) / dur);
+    const e = 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+    const s = from + (1 - from) * e;
+    node.scaleX(s);
+    node.scaleY(s);
+    node.getLayer()?.batchDraw();
+    if (k < 1) requestAnimationFrame(tick);
+    else {
+      node.scaleX(1);
+      node.scaleY(1);
+      node.getLayer()?.batchDraw();
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+interface DragState { uid: string; x0: number; y0: number; sx0: number; sy0: number; z0: number }
 
 export default function WorkspaceCanvas({
   onOpenCatalog,
@@ -24,7 +60,6 @@ export default function WorkspaceCanvas({
 }) {
   const items = useWorkspace((s) => s.items);
   const selectedUid = useWorkspace((s) => s.selectedUid);
-  const lastAddedUid = useWorkspace((s) => s.lastAddedUid);
   const select = useWorkspace((s) => s.select);
   const setItemTransform = useWorkspace((s) => s.setItemTransform);
   const removeItem = useWorkspace((s) => s.removeItem);
@@ -33,17 +68,19 @@ export default function WorkspaceCanvas({
   const [zoom, setZoom] = useState(1);
   const [gridOn, setGridOn] = useState(true);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
-  const [roomImgs, setRoomImgs] = useState<Record<string, HTMLImageElement>>({});
+  const [sprites, setSprites] = useState<Record<string, HTMLImageElement>>({});
+  const [rooms, setRooms] = useState<Record<string, HTMLImageElement>>({});
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<Konva.Layer | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const vGuideRef = useRef<Konva.Line | null>(null);
   const hGuideRef = useRef<Konva.Line | null>(null);
-  const prevAdded = useRef<string | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const zLerp = useRef(new Map<string, number>());
+  const animRot = useRef(new Map<string, number>());
 
-  // Responsive stage size — world coordinates (cm) stay stable across viewports.
+  // Responsive stage — the projected coordinate system stays stable.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -55,7 +92,7 @@ export default function WorkspaceCanvas({
     return () => ro.disconnect();
   }, []);
 
-  // Preload all artwork as data-URI images (no network, nothing to 404).
+  // Preload every sprite orientation plus both room variants (all data URIs).
   useEffect(() => {
     let alive = true;
     const load = (src: string) =>
@@ -64,56 +101,56 @@ export default function WorkspaceCanvas({
         im.onload = () => resolve(im);
         im.src = src;
       });
-    PRODUCTS.forEach((p) => {
-      load(artDataUri(p.id)).then((im) => alive && setImages((prev) => ({ ...prev, [p.id]: im })));
-    });
-    load(roomDataUri(true)).then((im) => alive && setRoomImgs((prev) => ({ ...prev, grid: im })));
-    load(roomDataUri(false)).then((im) => alive && setRoomImgs((prev) => ({ ...prev, plain: im })));
+    for (const p of PRODUCTS) {
+      for (const r of ROTS) {
+        load(spriteDataUri(p.id, r)).then((im) => {
+          if (alive) setSprites((prev) => ({ ...prev, [`${p.id}:${r}`]: im }));
+        });
+      }
+    }
+    load(roomDataUri(true)).then((im) => alive && setRooms((p) => ({ ...p, grid: im })));
+    load(roomDataUri(false)).then((im) => alive && setRooms((p) => ({ ...p, plain: im })));
     return () => {
       alive = false;
     };
   }, []);
 
-  // Attach the transformer (dashed outline + rotate handle) to the selection.
+  // Attach the dashed selection outline; keep the transformer above re-sorted items.
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
     const node = selectedUid ? layerRef.current?.findOne(`#${selectedUid}`) : null;
     tr.nodes(node ? [node] : []);
+    tr.moveToTop();
     tr.getLayer()?.batchDraw();
   }, [selectedUid, items]);
 
-  // Pop-in when a piece is added (ease-out-back), respecting reduced motion.
+  // Entrance pop for new items, pulse when an item turns 90°.
   useEffect(() => {
-    if (!lastAddedUid || lastAddedUid === prevAdded.current) return;
-    prevAdded.current = lastAddedUid;
-    const node = layerRef.current?.findOne(`#${lastAddedUid}`);
-    if (!node) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let raf = 0;
-    const t0 = performance.now();
-    const dur = 420;
-    const c1 = 1.70158;
-    const c3 = c1 + 1;
-    const tick = (t: number) => {
-      const k = Math.min(1, (t - t0) / dur);
-      const e = 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
-      const s = 0.55 + 0.45 * e;
-      node.scaleX(s);
-      node.scaleY(s);
-      node.getLayer()?.batchDraw();
-      if (k < 1) raf = requestAnimationFrame(tick);
-      else {
-        node.scaleX(1);
-        node.scaleY(1);
-        node.getLayer()?.batchDraw();
-      }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [lastAddedUid]);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let stagger = 0;
+    for (const it of items) {
+      const prev = animRot.current.get(it.uid);
+      const isNew = prev === undefined;
+      const turned = prev !== undefined && prev !== it.rotation;
+      animRot.current.set(it.uid, it.rotation);
+      if (reduced || (!isNew && !turned)) continue;
+      const node = layerRef.current?.findOne(`#${it.uid}`);
+      if (node) animateScale(node, isNew ? 0.55 : 0.85, isNew ? 420 : 240, isNew ? stagger : 0);
+      if (isNew) stagger += 50;
+    }
+    const uids = new Set(items.map((i) => i.uid));
+    for (const k of [...animRot.current.keys()]) if (!uids.has(k)) animRot.current.delete(k);
+  }, [items]);
 
-  // Keyboard: Delete removes the selection, Escape deselects.
+  const selected = items.find((i) => i.uid === selectedUid) ?? null;
+  const scene = useMemo(() => resolveScene(items), [items]);
+  const selectedEntry = selected ? scene.find((e) => e.item.uid === selected.uid) : undefined;
+
+  const rotateItem = (it: WorkspaceItem, delta = 90) =>
+    setItemTransform(it.uid, it.x, it.y, (((it.rotation ?? 0) + delta) % 360 + 360) % 360);
+
+  // Keyboard: Delete removes, R turns, Escape deselects.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -122,47 +159,77 @@ export default function WorkspaceCanvas({
         e.preventDefault();
         removeItem(selectedUid);
       }
+      if ((e.key === "r" || e.key === "R") && selected) rotateItem(selected);
       if (e.key === "Escape") select(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedUid, removeItem, select]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUid, selected, removeItem, select, setItemTransform]);
 
-  const pad = 34;
-  const base = size.w && size.h ? Math.min((size.w - pad * 2) / ROOM_W, (size.h - pad * 2) / ROOM_H) : 1;
-  const scale = base * zoom;
-  const ox = (size.w - ROOM_W * scale) / 2;
-  const oy = (size.h - ROOM_H * scale) / 2;
+  // --- Drag: screen deltas invert exactly onto the floor plane (1:1 with cursor) ---
+  const beginDrag = (it: WorkspaceItem, z: number) => (e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target;
+    dragRef.current = { uid: it.uid, x0: it.x, y0: it.y, sx0: node.x(), sy0: node.y(), z0: z };
+    zLerp.current.set(it.uid, z);
+    select(it.uid);
+  };
 
-  const selected = items.find((i) => i.uid === selectedUid) ?? null;
-  const selectedProduct = selected ? findProduct(selected.productId) : undefined;
-  const selectedArt = selected ? getArt(selected.productId) : null;
+  const worldFrom = (d: DragState, node: Konva.Node) => {
+    // Konva resets the node from the pointer each move, so these deltas stay clean.
+    const dsx = node.x() - d.sx0;
+    const dsy = node.y() - d.sy0;
+    let nx = d.x0 + dsx / 2 + dsy;
+    let ny = d.y0 + dsy - dsx / 2;
+    const nearX = Math.abs(nx - ROOM_W / 2) < SNAP;
+    const nearY = Math.abs(ny - ROOM_H / 2) < SNAP;
+    if (nearX) nx = ROOM_W / 2;
+    if (nearY) ny = ROOM_H / 2;
+    return { nx: clamp(nx, 16, ROOM_W - 16), ny: clamp(ny, 16, ROOM_H - 16), nearX, nearY };
+  };
 
-  // Snap to room-centre guides while dragging; commit (rounded to 5 cm) on release.
-  const handleDragMove = (node: Konva.Node) => {
-    let x = node.x();
-    let y = node.y();
-    const nearX = Math.abs(x - ROOM_W / 2) < 7;
-    const nearY = Math.abs(y - ROOM_H / 2) < 7;
-    if (nearX) x = ROOM_W / 2;
-    if (nearY) y = ROOM_H / 2;
-    node.x(clamp(x, 16, ROOM_W - 16));
-    node.y(clamp(y, 16, ROOM_H - 16));
+  const onDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const node = e.target;
+    const { nx, ny, nearX, nearY } = worldFrom(d, node);
+    const item = items.find((i) => i.uid === d.uid);
+    // Live elevation: glide up when the anchor crosses onto a desk.
+    const target = item ? supportZ(item.productId, nx, ny, items.filter((o) => o.uid !== d.uid)) : 0;
+    const cur = zLerp.current.get(d.uid) ?? d.z0;
+    const z = cur + (target - cur) * 0.35;
+    zLerp.current.set(d.uid, z);
+    node.position({ x: nx - ny, y: (nx + ny) / 2 - z });
     vGuideRef.current?.visible(nearX);
     hGuideRef.current?.visible(nearY);
   };
 
-  const commit = (uid: string, node: Konva.Node) => {
-    const rot = ((Math.round(node.rotation() / 5) * 5) % 360 + 360) % 360;
-    setItemTransform(uid, round5(clamp(node.x(), 16, ROOM_W - 16)), round5(clamp(node.y(), 16, ROOM_H - 16)), rot);
+  const onDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    zLerp.current.delete(d.uid);
     vGuideRef.current?.visible(false);
     hGuideRef.current?.visible(false);
+    const node = e.target;
+    if (Math.abs(node.x() - d.sx0) < 1 && Math.abs(node.y() - d.sy0) < 1) return; // click, not drag
+    const { nx, ny } = worldFrom(d, node);
+    const item = items.find((i) => i.uid === d.uid);
+    if (item) setItemTransform(d.uid, round5(nx), round5(ny), item.rotation);
   };
 
-  const nudge = (deg: number) => {
-    if (!selected) return;
-    setItemTransform(selected.uid, selected.x, selected.y, (selected.rotation + deg + 360) % 360);
-  };
+  // Fit the whole dollhouse (walls included) into the viewport.
+  const pad = size.w < 560 ? 12 : 34;
+  const base =
+    size.w && size.h
+      ? Math.max(0.08, Math.min((size.w - pad * 2) / SCENE_W, (size.h - pad * 2) / SCENE_H))
+      : 1;
+  const scale = base * zoom;
+  // Content center in projected units: floor diamond + walls span x [-340,480], y [-240,410].
+  const ox = size.w / 2 - 70 * scale;
+  const oy = size.h / 2 - 85 * scale;
+
+  const selectedFootprint = selected ? footprintOf(selected.productId, selected.rotation) : null;
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -193,29 +260,40 @@ export default function WorkspaceCanvas({
             }}
           >
             <Layer listening={false}>
-              {(roomImgs.grid || roomImgs.plain) && (
+              {(rooms.grid || rooms.plain) && (
                 <KonvaImage
-                  image={gridOn ? roomImgs.grid : roomImgs.plain}
-                  width={ROOM_W}
-                  height={ROOM_H}
+                  image={gridOn ? rooms.grid : rooms.plain}
+                  x={-SCENE_OX}
+                  y={-SCENE_OY}
+                  width={SCENE_W}
+                  height={SCENE_H}
                   shadowColor="#3A342C"
-                  shadowOpacity={0.22}
-                  shadowBlur={26}
-                  shadowOffsetY={8}
+                  shadowOpacity={0.16}
+                  shadowBlur={30}
+                  shadowOffsetY={10}
                 />
               )}
             </Layer>
 
             <Layer ref={layerRef}>
-              {items.map((it) => {
-                const art = getArt(it.productId);
+              {scene.map(({ item, z }) => {
+                const r = norm90(item.rotation ?? 0);
+                const meta = spriteMeta(item.productId, r);
+                const img = sprites[`${item.productId}:${r}`];
+                const p = project(item.x, item.y, z);
+                const f = footprintOf(item.productId, r);
+                const hw = f.w / 2 + 2;
+                const hd = f.d / 2 + 2;
+                // Shadow rides with the anchor, so it lands on whatever surface the item rests on.
+                const sh = [
+                  [-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd],
+                ].flatMap(([dx, dy]) => [dx - dy, (dx + dy) / 2]);
                 return (
                   <Group
-                    key={it.uid}
-                    id={it.uid}
-                    x={it.x}
-                    y={it.y}
-                    rotation={it.rotation}
+                    key={item.uid}
+                    id={item.uid}
+                    x={p.x}
+                    y={p.y}
                     draggable
                     onMouseEnter={() => {
                       document.body.style.cursor = "move";
@@ -223,23 +301,22 @@ export default function WorkspaceCanvas({
                     onMouseLeave={() => {
                       document.body.style.cursor = "default";
                     }}
-                    onClick={() => select(it.uid)}
-                    onTap={() => select(it.uid)}
-                    onDragMove={(e) => handleDragMove(e.target)}
-                    onDragEnd={(e) => {
-                      commit(it.uid, e.target);
-                      select(it.uid);
-                    }}
-                    onTransformEnd={(e) => commit(it.uid, e.target)}
+                    onClick={() => select(item.uid)}
+                    onTap={() => select(item.uid)}
+                    onDblClick={() => rotateItem(item)}
+                    onDblTap={() => rotateItem(item)}
+                    onDragStart={beginDrag(item, z)}
+                    onDragMove={onDragMove}
+                    onDragEnd={onDragEnd}
                   >
-                    <Ellipse y={2} radiusX={art.w * 0.46} radiusY={art.h * 0.46} fill="rgba(58,52,44,0.12)" />
-                    {images[it.productId] && (
+                    <Line closed points={sh} fill="rgba(58,52,44,0.12)" listening={false} />
+                    {img && (
                       <KonvaImage
-                        image={images[it.productId]}
-                        x={-art.w / 2}
-                        y={-art.h / 2}
-                        width={art.w}
-                        height={art.h}
+                        image={img}
+                        x={-meta.ax}
+                        y={-meta.ay}
+                        width={meta.width}
+                        height={meta.height}
                         perfectDrawEnabled={false}
                       />
                     )}
@@ -247,25 +324,34 @@ export default function WorkspaceCanvas({
                 );
               })}
 
-              {/* Alignment guides */}
-              <Line ref={vGuideRef} points={[ROOM_W / 2, 0, ROOM_W / 2, ROOM_H]} stroke="#D97E4A" strokeWidth={1.4} dash={[7, 6]} visible={false} listening={false} />
-              <Line ref={hGuideRef} points={[0, ROOM_H / 2, ROOM_W, ROOM_H / 2]} stroke="#D97E4A" strokeWidth={1.4} dash={[7, 6]} visible={false} listening={false} />
+              {/* Room-center alignment guides, projected onto the floor */}
+              <Line
+                ref={vGuideRef}
+                points={[ROOM_W / 2, ROOM_W / 4, ROOM_W / 2 - ROOM_H, ROOM_W / 4 + ROOM_H / 2]}
+                stroke="#D97E4A"
+                strokeWidth={1.4}
+                dash={[7, 6]}
+                visible={false}
+                listening={false}
+              />
+              <Line
+                ref={hGuideRef}
+                points={[-ROOM_H / 2, ROOM_H / 4, ROOM_W - ROOM_H / 2, (ROOM_W + ROOM_H) / 2]}
+                stroke="#D97E4A"
+                strokeWidth={1.4}
+                dash={[7, 6]}
+                visible={false}
+                listening={false}
+              />
 
               <Transformer
                 ref={trRef}
-                rotateEnabled
+                rotateEnabled={false}
                 enabledAnchors={[]}
-                anchorCornerRadius={99}
-                anchorSize={16}
-                anchorFill="#5F7350"
-                anchorStroke="#F7F2E7"
-                anchorStrokeWidth={2}
-                rotateAnchorOffset={30}
                 borderStroke="#5F7350"
                 borderStrokeWidth={1.6}
                 borderDash={[6, 5]}
-                padding={4}
-                keepRatio={false}
+                padding={6}
               />
             </Layer>
           </Stage>
@@ -273,7 +359,6 @@ export default function WorkspaceCanvas({
 
         <OnboardingHint />
 
-        {/* Delightful empty state */}
         <AnimatePresence>
           {items.length === 0 && (
             <motion.div
@@ -299,7 +384,7 @@ export default function WorkspaceCanvas({
 
         {/* Selection HUD */}
         <AnimatePresence>
-          {selected && selectedArt && (
+          {selected && selectedFootprint && (
             <motion.div
               key="hud"
               initial={{ opacity: 0, y: 14 }}
@@ -309,15 +394,16 @@ export default function WorkspaceCanvas({
               className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-paper py-1.5 pl-4 pr-1.5 shadow-lg"
             >
               <div className="mr-2 hidden min-w-0 sm:block">
-                <p className="truncate text-xs font-semibold leading-none">{selectedProduct?.name}</p>
+                <p className="truncate text-xs font-semibold leading-none">{findProduct(selected.productId)?.name}</p>
                 <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-                  {selectedArt.w} × {selectedArt.h} cm
+                  {selectedFootprint.w} × {selectedFootprint.d} cm
+                  {selectedEntry && selectedEntry.z > 0 && <span className="ml-1 text-sage-deep">· on desk</span>}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" title="Rotate −15°" onClick={() => nudge(-15)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Turn 90° left" onClick={() => rotateItem(selected, -90)}>
                 <RotateCcw className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" title="Rotate +15°" onClick={() => nudge(15)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Turn 90° right" onClick={() => rotateItem(selected, 90)}>
                 <RotateCw className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="icon" className="h-8 w-8" title="Duplicate" onClick={() => duplicateItem(selected.uid)}>
@@ -364,7 +450,7 @@ function OnboardingHint() {
       className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-ink px-4 py-2 text-[11px] font-medium text-paper shadow-lg"
     >
       <MousePointerClick className="h-3.5 w-3.5 text-sage" />
-      <span>Drag to move · round handle rotates · Delete removes</span>
+      <span>Drag to move · double-click turns · Delete removes</span>
       <button onClick={dismiss} aria-label="Dismiss hint" className="ml-1 rounded-full p-0.5 transition-colors hover:bg-paper/20">
         <X className="h-3.5 w-3.5" />
       </button>
