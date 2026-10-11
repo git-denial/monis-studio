@@ -10,7 +10,6 @@ export const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: "plants", label: "Plants & décor" },
 ];
 
-// Duration pricing is data, not scattered logic. All rates are demo estimates.
 export const DURATION_OPTIONS: DurationOption[] = [
   { id: "1w", label: "1 week", short: "1 wk", weeks: 1, multiplier: 1 },
   { id: "2w", label: "2 weeks", short: "2 wks", weeks: 2, multiplier: 0.95, note: "5% off the weekly rate" },

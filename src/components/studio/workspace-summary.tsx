@@ -130,7 +130,7 @@ export function WorkspaceSummary({ onRent }: { onRent: () => void }) {
             </AnimatePresence>
           </div>
           <p className="text-[10px] leading-relaxed text-muted-foreground">
-            Demo estimate in IDR — not a real quote. Duration: {dur.label} ({dur.weeks} {dur.weeks === 1 ? "week" : "weeks"}).
+            Duration: {dur.label} ({dur.weeks} {dur.weeks === 1 ? "week" : "weeks"}).
           </p>
         </div>
 

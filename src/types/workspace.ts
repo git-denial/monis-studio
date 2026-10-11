@@ -6,7 +6,7 @@ export interface Product {
   category: CategoryId;
   descriptor: string;
   description: string;
-  weeklyRate: number; // IDR per week — demo estimate
+  weeklyRate: number; // IDR per week
   size: { w: number; d: number; h: number }; // footprint (cm) + height
   defaultPos: { x: number; y: number; rotation: number };
 }

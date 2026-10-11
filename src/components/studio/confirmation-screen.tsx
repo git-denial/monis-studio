@@ -57,7 +57,7 @@ export function ConfirmationScreen({
             Your workspace is booked<span className="text-terracotta">.</span>
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Well — demo-booked. Nothing was charged, nothing was stored, and the desk is happily still ours.
+            Well — demo-booked. Nothing was charged.
           </p>
           <div className="mt-6 inline-flex items-center gap-2.5 rounded-full border border-line bg-paper px-4 py-2 text-sm shadow-sm">
             <span className="text-xs text-muted-foreground">Booking ref</span>

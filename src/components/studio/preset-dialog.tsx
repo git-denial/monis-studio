@@ -41,10 +41,9 @@ export function PresetDialog() {
         if (!o) setAck(false);
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="rounded-full">
+      <DialogTrigger render={<Button variant="outline" size="sm" className="rounded-full">
           <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />Presets
-        </Button>
+        </Button>}>
       </DialogTrigger>
       <DialogContent className="max-w-3xl gap-0 overflow-hidden rounded-2xl border-line bg-popover p-0 sm:max-w-3xl">
         <DialogHeader className="space-y-1 border-b border-line px-6 py-4">

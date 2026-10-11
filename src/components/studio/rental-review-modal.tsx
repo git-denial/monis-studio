@@ -34,7 +34,7 @@ export function RentalReviewModal({
       <DialogContent className="max-w-3xl gap-0 overflow-hidden rounded-2xl border-line bg-popover p-0 sm:max-w-3xl">
         <DialogHeader className="space-y-1 border-b border-line px-6 py-4">
           <DialogTitle className="font-display text-lg tracking-tight">Review your rental</DialogTitle>
-          <DialogDescription>A quick look before the demo confirmation. Nothing is charged.</DialogDescription>
+          <DialogDescription>A quick look before the demo confirmation.</DialogDescription>
         </DialogHeader>
 
         <div className="grid max-h-[65vh] overflow-y-auto md:grid-cols-2">
@@ -89,7 +89,7 @@ export function RentalReviewModal({
             </div>
 
             <div className="mt-4 rounded-xl bg-cream p-3 text-[11px] leading-relaxed text-muted-foreground">
-              Demo experience for Monis.rent — illustrative IDR estimates. No real booking, payment, or personal data involved.
+              Demo experience for Monis.rent. No real booking or payment involved.
             </div>
 
             <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">

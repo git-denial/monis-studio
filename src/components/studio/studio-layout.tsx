@@ -43,12 +43,12 @@ export function StudioLayout({ onRent }: { onRent: () => void }) {
           <Badge variant="outline" className="hidden font-medium text-muted-foreground sm:inline-flex">Studio</Badge>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-muted-foreground md:inline">Demo · estimates only</span>
+          {/* <span className="hidden text-xs text-muted-foreground md:inline">Demo · estimates only</span> */}
           <PresetDialog />
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[330px_minmax(0,1fr)_360px]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[400px_minmax(0,1fr)_360px]">
         <aside className="hidden min-h-0 border-r border-line lg:block">
           <ProductLibrary />
         </aside>

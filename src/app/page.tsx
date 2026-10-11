@@ -45,14 +45,14 @@ export default function Home() {
               Design my workspace<ArrowRight className="ml-1 h-4 w-4" />
             </Link>
           </Button>
-          <p className="mt-5 text-xs text-paper/50">Demo experience · illustrative IDR pricing · no real bookings</p>
+          <p className="mt-5 text-xs text-paper/50">Demo experience · no real bookings</p>
         </div>
       </section>
 
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-6 text-xs text-muted-foreground">
           <span>monis.rent — workspace rentals, Bali</span>
-          <span>Demo build · all prices are illustrative estimates in IDR</span>
+          <span>Demo build</span>
         </div>
       </footer>
     </div>

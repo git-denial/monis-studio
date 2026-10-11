@@ -23,7 +23,7 @@ export function ProductLibrary() {
   }, [cat, query]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full w-full min-h-0 flex-col bg-background">
       <div className="shrink-0 space-y-3 border-b border-line p-3.5">
         <div className="flex items-baseline justify-between">
           <h2 className="font-display text-base font-semibold tracking-tight">Catalog</h2>
@@ -58,7 +58,7 @@ export function ProductLibrary() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2.5 scrollbar-slim">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-[repeat(2,minmax(170px,1fr))] gap-3 overflow-x-auto min-w-0">
           <AnimatePresence>
             {filtered.map((p) => (
               <ProductCard key={p.id} product={p} />
